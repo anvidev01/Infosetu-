@@ -4,9 +4,14 @@ import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddin
 import { HuggingFaceInference } from "@langchain/community/llms/hf"; 
 import { PromptTemplate } from "@langchain/core/prompts";
 import { RunnableSequence } from "@langchain/core/runnables";
-// --- THIS IS THE CORRECT PATH FOR YOUR PACKAGE VERSION ---
-import { formatDocumentsAsString } from "langchain/document";
+import { RunnablePassthrough } from "@langchain/core/runnables";
+
+// --- FIXED: Replace the problematic import with custom formatter ---
+const formatDocumentsAsString = (documents: any[]) => {
+  return documents.map(doc => doc.pageContent).join("\n\n");
+};
 // --- END OF FIX ---
+
 import { pipeline, Pipeline } from '@xenova/transformers';
 
 // --- (Keep existing setup) ---
@@ -14,6 +19,7 @@ const embeddings = new HuggingFaceTransformersEmbeddings({
   model: "Xenova/all-MiniLM-L6-v2"
 });
 
+// Note: You might want to move this to a function or handle the async loading better
 const vectorStore = await FaissStore.load(
   "vector_store",
   embeddings
@@ -44,10 +50,14 @@ Helpful Answer:
 
 const prompt = PromptTemplate.fromTemplate(promptTemplate);
 
+// Fixed chain construction
 const chain = RunnableSequence.from([
   {
-    context: (input) => retriever.pipe(formatDocumentsAsString).invoke(input.question),
-    question: (input) => input.question,
+    context: async (input: { question: string }) => {
+      const docs = await retriever.invoke(input.question);
+      return formatDocumentsAsString(docs);
+    },
+    question: (input: { question: string }) => input.question,
   },
   prompt,
   llm,

@@ -12,33 +12,37 @@ type Message = {
 type Language = 'en' | 'hi';
 type Locale = 'en-IN' | 'hi-IN';
 
-// --- (Speech objects will be initialized in state) ---
-
 // --- Language translations for static text ---
 const translations = {
   en: {
     welcome: "Namaste! I'm InfoSetu, your AI-powered citizen service assistant. I serve as your intelligent bridge to government services, helping you with schemes, forms, eligibility criteria, and more - all in your preferred language. You can also upload a document to ask questions about it. How may I assist you today?",
     title: "InfoSetu - AI Citizen Assistant",
     subtitle: "Your intelligent bridge to government services",
-    quickHelp: "Quick Help:",
-    placeholder: "Ask InfoSetu about government schemes, forms, eligibility...",
+    quickHelp: "Quick Help Topics",
+    placeholder: "Ask about government schemes, forms, eligibility...",
     listening: "Listening...",
     processing: "Processing document...",
     error: "Sorry, I'm having trouble connecting right now. Please check your internet connection and try again.",
     voiceOn: "🔊 Voice On",
     voiceOff: "🔇 Voice Off",
+    uploadDoc: "Upload Document",
+    send: "Send",
+    typing: "InfoSetu is typing...",
   },
   hi: {
     welcome: "नमस्ते! मैं इन्फोसेतु, आपका एआई-संचालित नागरिक सेवा सहायक हूं। मैं सरकारी सेवाओं के लिए आपके बुद्धिमान सेतु के रूप में कार्य करता हूं, जो आपको योजनाओं, प्रपत्रों, पात्रता मानदंडों और बहुत कुछ के साथ आपकी पसंदीदा भाषा में मदद करता है। आप इसके बारे में प्रश्न पूछने के लिए कोई दस्तावेज़ भी अपलोड कर सकते हैं। मैं आज आपकी किस प्रकार सहायता कर सकता हूँ?",
     title: "इन्फोसेतु - एआई नागरिक सहायक",
     subtitle: "सरकारी सेवाओं के लिए आपका बुद्धिमान सेतु",
-    quickHelp: "त्वरित सहायता:",
-    placeholder: "इन्फोसेतु से सरकारी योजनाओं, प्रपत्रों, पात्रता के बारे में पूछें...",
+    quickHelp: "त्वरित सहायता विषय",
+    placeholder: "सरकारी योजनाओं, प्रपत्रों, पात्रता के बारे में पूछें...",
     listening: "सुन रहा हूँ...",
     processing: "दस्तावेज़ संसाधित हो रहा है...",
     error: "क्षमा करें, मुझे अभी कनेक्ट करने में समस्या हो रही है। कृपया अपना इंटरनेट कनेक्शन जांचें और पुनः प्रयास करें।",
-    voiceOn: "🔊 आवाज़ चालू",
-    voiceOff: "🔇 आवाज़ बंद",
+    voiceOn: "🔊 आवाज़ चालू",
+    voiceOff: "🔇 आवाज़ बंद",
+    uploadDoc: "दस्तावेज़ अपलोड",
+    send: "भेजें",
+    typing: "इन्फोसेतु टाइप कर रहा है...",
   }
 };
 
@@ -62,12 +66,15 @@ export default function ChatInterface() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // --- NEW: Refs to hold browser-only APIs ---
+  // --- Refs to hold browser-only APIs ---
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<any>(null);
+  const [isClient, setIsClient] = useState(false);
 
-  // --- NEW: Initialize browser APIs on client-side only ---
+  // --- Initialize browser APIs on client-side only ---
   useEffect(() => {
+    setIsClient(true);
+    
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognitionInstance = new SpeechRecognition();
@@ -79,7 +86,7 @@ export default function ChatInterface() {
     }
 
     synthRef.current = (window as any).speechSynthesis;
-  }, []); // Runs once on mount
+  }, []);
 
   // Update recognition language when locale changes
   useEffect(() => {
@@ -184,7 +191,7 @@ export default function ChatInterface() {
       const extractedText = ret.data.text;
       
       const ocrMessage: Message = {
-        text: `(Processing document...)\n\n"${extractedText.substring(0, 150)}..."\n\nPlease ask your question about this document.`,
+        text: `📄 **Document Uploaded Successfully**\n\n"${extractedText.substring(0, 150)}..."\n\nPlease ask your question about this document.`,
         isUser: false,
         timestamp: new Date()
       };
@@ -273,77 +280,178 @@ export default function ChatInterface() {
     });
   };
 
+  // Quick help topics with colorful gradients and icons
+  const quickHelpTopics = [
+    { 
+      name: "PM-KISAN Scheme", 
+      icon: "👨‍🌾", 
+      en: "PM-KISAN Scheme", 
+      hi: "पीएम-किसान योजना",
+      gradient: "from-green-500 to-emerald-600",
+      bgGradient: "from-green-50 to-emerald-50"
+    },
+    { 
+      name: "Aadhaar Services", 
+      icon: "🆔", 
+      en: "Aadhaar Services", 
+      hi: "आधार सेवाएं",
+      gradient: "from-blue-500 to-cyan-600",
+      bgGradient: "from-blue-50 to-cyan-50"
+    },
+    { 
+      name: "Digital Ration Card", 
+      icon: "📱", 
+      en: "Digital Ration Card", 
+      hi: "डिजिटल राशन कार्ड",
+      gradient: "from-purple-500 to-violet-600",
+      bgGradient: "from-purple-50 to-violet-50"
+    },
+    { 
+      name: "Pension Schemes", 
+      icon: "👵", 
+      en: "Pension Schemes", 
+      hi: "पेंशन योजनाएं",
+      gradient: "from-orange-500 to-amber-600",
+      bgGradient: "from-orange-50 to-amber-50"
+    },
+    { 
+      name: "Employment Programs", 
+      icon: "💼", 
+      en: "Employment Programs", 
+      hi: "रोजगार कार्यक्रम",
+      gradient: "from-indigo-500 to-blue-600",
+      bgGradient: "from-indigo-50 to-blue-50"
+    },
+    { 
+      name: "Health Insurance", 
+      icon: "🏥", 
+      en: "Health Insurance", 
+      hi: "स्वास्थ्य बीमा",
+      gradient: "from-red-500 to-pink-600",
+      bgGradient: "from-red-50 to-pink-50"
+    }
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white rounded-t-2xl shadow-lg p-6 text-center border-b">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            {txt.title}
-          </h1>
-          <p className="text-gray-600 text-lg">
-            {txt.subtitle}
-          </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+      {/* Animated Background Elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full blur-3xl opacity-20 animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full blur-3xl opacity-20 animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full blur-3xl opacity-10 animate-pulse delay-500"></div>
+      </div>
+
+      <div className="max-w-4xl mx-auto relative z-10">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-800 via-purple-800 to-slate-800 rounded-t-2xl shadow-2xl p-8 text-center border-b border-purple-600/30 backdrop-blur-sm bg-white/5">
+          <div className="flex items-center justify-center mb-4">
+            <div className="relative">
+              <div className="w-16 h-16 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-2xl flex items-center justify-center mr-4 shadow-lg rotate-6 transform group-hover:rotate-12 transition-transform duration-300">
+                <span className="text-2xl">🇮🇳</span>
+              </div>
+              <div className="absolute -inset-1 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-2xl blur opacity-30 group-hover:opacity-50 transition duration-300"></div>
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
+                {txt.title}
+              </h1>
+              <p className="text-purple-200 text-lg font-light tracking-wide">
+                {txt.subtitle}
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white px-6 py-3 flex justify-between items-center border-b">
-          <div className="flex space-x-4">
+        {/* Language and Controls Bar */}
+        <div className="bg-slate-800/80 backdrop-blur-md px-6 py-4 flex flex-col sm:flex-row justify-between items-center border-b border-slate-700/50 shadow-lg">
+          <div className="flex space-x-3 mb-3 sm:mb-0">
             <button 
               onClick={() => changeLanguage('en')}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                language === 'en' ? 'bg-blue-500 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+              className={`px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
+                language === 'en' 
+                  ? 'bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg shadow-cyan-500/25' 
+                  : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 border border-slate-600/50'
               }`}
             >
-              English
+              🇺🇸 English
             </button>
             <button 
               onClick={() => changeLanguage('hi')}
-              className={`px-4 py-2 rounded-lg font-medium ${
-                language === 'hi' ? 'bg-blue-500 text-white' : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+              className={`px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
+                language === 'hi' 
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25' 
+                  : 'bg-slate-700/50 text-slate-300 hover:bg-slate-600/50 border border-slate-600/50'
               }`}
             >
-              Hindi
+              🇮🇳 हिंदी
             </button>
           </div>
           <button 
             onClick={() => setIsSpeechEnabled(!isSpeechEnabled)}
-            className={`px-3 py-2 rounded-lg ${isSpeechEnabled ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}
+            className={`px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
+              isSpeechEnabled 
+                ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25' 
+                : 'bg-slate-700/50 text-slate-300 border border-slate-600/50'
+            }`}
           >
             {isSpeechEnabled ? txt.voiceOn : txt.voiceOff}
           </button>
         </div>
 
-        <div className="bg-white rounded-b-2xl shadow-lg p-6">
-          <div className="h-96 overflow-y-auto mb-6 space-y-4 p-2">
+        {/* Main Chat Container */}
+        <div className="bg-slate-800/60 backdrop-blur-md rounded-b-2xl shadow-2xl overflow-hidden border border-slate-700/50">
+          {/* Messages Area */}
+          <div className="h-96 overflow-y-auto mb-6 p-6 bg-gradient-to-b from-slate-900/50 to-slate-800/30">
             {messages.map((message, index) => (
               <div
                 key={index}
-                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${message.isUser ? 'justify-end' : 'justify-start'} mb-6`}
               >
                 <div
-                  className={`max-w-xs lg:max-w-md rounded-2xl p-4 ${
+                  className={`max-w-xs lg:max-w-md rounded-2xl p-5 transition-all duration-300 transform hover:scale-105 ${
                     message.isUser
-                      ? 'bg-blue-500 text-white rounded-br-none'
-                      : 'bg-blue-50 border border-blue-100 text-gray-800 rounded-bl-none'
+                      ? 'bg-gradient-to-br from-cyan-500 to-blue-500 text-white rounded-br-none shadow-lg shadow-cyan-500/25'
+                      : 'bg-gradient-to-br from-slate-700 to-slate-600 text-slate-100 rounded-bl-none shadow-lg border border-slate-600/50'
                   }`}
                 >
-                  <p className="text-sm leading-relaxed" style={{ whiteSpace: 'pre-wrap' }}>{message.text}</p>
-                  <p className={`text-xs mt-2 ${message.isUser ? 'text-blue-100' : 'text-gray-500'}`}>
+                  {!message.isUser && (
+                    <div className="flex items-center mb-3">
+                      <div className="w-7 h-7 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center mr-3 shadow-md">
+                        <span className="text-xs text-white font-bold">AI</span>
+                      </div>
+                      <span className="text-sm font-semibold text-purple-200">InfoSetu</span>
+                    </div>
+                  )}
+                  <p className="text-sm leading-relaxed" style={{ whiteSpace: 'pre-wrap' }}>
+                    {message.text}
+                  </p>
+                  <p className={`text-xs mt-3 font-medium ${message.isUser ? 'text-cyan-100' : 'text-slate-400'}`}>
                     {formatTime(message.timestamp)}
                   </p>
                 </div>
               </div>
             ))}
             
+            {/* Loading Indicator */}
             {(isLoading || isProcessingImage) && (
-              <div className="flex justify-start">
-                <div className="bg-blue-50 border border-blue-100 rounded-2xl rounded-bl-none p-4 max-w-xs">
+              <div className="flex justify-start mb-6">
+                <div className="bg-gradient-to-br from-slate-700 to-slate-600 rounded-2xl rounded-bl-none p-5 max-w-xs shadow-lg border border-slate-600/50">
+                  <div className="flex items-center mb-3">
+                    <div className="w-7 h-7 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full flex items-center justify-center mr-3 shadow-md">
+                      <span className="text-xs text-white font-bold">AI</span>
+                    </div>
+                    <span className="text-sm font-semibold text-purple-200">{txt.typing}</span>
+                  </div>
                   {isProcessingImage ? (
-                    <p className="text-sm text-blue-600 animate-pulse">{txt.processing}</p>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-pulse"></div>
+                      <p className="text-sm text-purple-300">{txt.processing}</p>
+                    </div>
                   ) : (
-                    <div className="flex space-x-2">
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                     </div>
                   )}
                 </div>
@@ -352,39 +460,57 @@ export default function ChatInterface() {
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">{txt.quickHelp}</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[
-                "PM-KISAN Scheme",
-                "Aadhaar Services", 
-                "Digital Ration Card",
-                "Pension Schemes",
-                "Employment Programs",
-                "Health Insurance"
-              ].map((service, index) => (
+          {/* Quick Help Section */}
+          <div className="mb-8 px-8">
+            <h3 className="text-xl font-bold text-slate-200 mb-6 flex items-center justify-center">
+              <span className="w-3 h-3 bg-gradient-to-r from-cyan-400 to-blue-400 rounded-full mr-3 animate-pulse"></span>
+              {txt.quickHelp}
+              <span className="w-3 h-3 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full ml-3 animate-pulse delay-300"></span>
+            </h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {quickHelpTopics.map((topic, index) => (
                 <button
                   key={index}
-                  onClick={() => handleQuickHelp(service)}
-                  className="bg-white border border-gray-300 rounded-xl p-3 text-center hover:bg-gray-50 transition-colors text-gray-700 font-medium hover:border-blue-300"
+                  onClick={() => handleQuickHelp(topic.name)}
+                  disabled={isLoading || isProcessingImage}
+                  className={`bg-gradient-to-br ${topic.bgGradient} border border-slate-600/30 rounded-2xl p-4 text-center hover:scale-105 hover:shadow-2xl transition-all duration-300 group disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none`}
                 >
-                  {service}
+                  <div className={`w-12 h-12 mx-auto mb-3 rounded-2xl bg-gradient-to-r ${topic.gradient} flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300`}>
+                    <span className="text-xl">{topic.icon}</span>
+                  </div>
+                  <span className={`text-sm font-semibold bg-gradient-to-r ${topic.gradient} bg-clip-text text-transparent group-hover:scale-105 transition-transform duration-300`}>
+                    {language === 'hi' ? topic.hi : topic.en}
+                  </span>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="border-t pt-4">
-            <div className="flex space-x-3">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage(input)}
-                placeholder={isListening ? txt.listening : txt.placeholder}
-                className="flex-1 border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                disabled={isLoading || isProcessingImage}
-              />
+          {/* Input Area */}
+          <div className="border-t border-slate-700/50 bg-slate-900/50 backdrop-blur-md px-6 py-6">
+            <div className="flex space-x-4">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && !isLoading && sendMessage(input)}
+                  placeholder={isListening ? "🎤 " + txt.listening : txt.placeholder}
+                  className="w-full bg-slate-700/50 border border-slate-600/50 rounded-2xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all duration-300 text-slate-100 placeholder-slate-400 shadow-inner backdrop-blur-sm disabled:bg-slate-800/30"
+                  disabled={isLoading || isProcessingImage}
+                />
+                {isListening && (
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                    <div className="flex space-x-1">
+                      <div className="w-1.5 h-4 bg-red-400 rounded-full animate-pulse shadow-md shadow-red-400/50"></div>
+                      <div className="w-1.5 h-6 bg-red-400 rounded-full animate-pulse shadow-md shadow-red-400/50" style={{ animationDelay: '0.2s' }}></div>
+                      <div className="w-1.5 h-4 bg-red-400 rounded-full animate-pulse shadow-md shadow-red-400/50" style={{ animationDelay: '0.4s' }}></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* File Upload Button */}
               <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -395,31 +521,62 @@ export default function ChatInterface() {
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading || isProcessingImage}
-                className="bg-gray-200 text-gray-700 px-4 py-3 rounded-xl hover:bg-gray-300 transition-colors font-semibold disabled:bg-gray-100 disabled:cursor-not-allowed"
+                className="bg-gradient-to-r from-emerald-500 to-green-500 text-white px-5 py-4 rounded-2xl hover:from-emerald-600 hover:to-green-600 hover:scale-105 transition-all duration-300 shadow-lg shadow-emerald-500/25 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center min-w-[60px]"
+                title={txt.uploadDoc}
               >
-                📄
+                <span className="text-lg">📄</span>
               </button>
-              {recognitionRef.current && (
+              
+              {/* Voice Input Button */}
+              {isClient && recognitionRef.current && (
                 <button 
                   onClick={handleListen}
                   disabled={isLoading || isProcessingImage}
-                  className={`px-4 py-3 rounded-xl transition-colors font-semibold ${
+                  className={`px-5 py-4 rounded-2xl transition-all duration-300 shadow-lg hover:scale-105 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center min-w-[60px] ${
                     isListening
-                      ? 'bg-red-500 text-white hover:bg-red-600'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  } disabled:bg-gray-100 disabled:cursor-not-allowed`}
+                      ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white animate-pulse shadow-red-500/25'
+                      : 'bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-amber-500/25'
+                  }`}
+                  title="Voice Input"
                 >
-                  🎤
+                  <span className="text-lg">🎤</span>
                 </button>
               )}
+              
+              {/* Send Button */}
               <button 
                 onClick={() => sendMessage(input)}
                 disabled={isLoading || isProcessingImage || !input.trim()}
-                className="bg-blue-500 text-white px-6 py-3 rounded-xl hover:bg-blue-600 transition-colors font-semibold disabled:bg-blue-300 disabled:cursor-not-allowed"
+                className="bg-gradient-to-r from-cyan-500 to-blue-500 text-white px-8 py-4 rounded-2xl hover:from-cyan-600 hover:to-blue-600 hover:scale-105 transition-all duration-300 shadow-lg shadow-cyan-500/25 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed disabled:transform-none font-semibold flex items-center justify-center min-w-[100px]"
               >
-                Send
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <span className="flex items-center">
+                    {txt.send} 
+                    <span className="ml-2 text-lg">🚀</span>
+                  </span>
+                )}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-6 text-slate-400 text-sm font-light">
+          <div className="flex items-center justify-center space-x-6">
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-gradient-to-r from-cyan-400 to-blue-400 rounded-full mr-2 animate-pulse"></span>
+              Powered by AI
+            </span>
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-gradient-to-r from-emerald-400 to-green-400 rounded-full mr-2 animate-pulse delay-300"></span>
+              Secure & Private
+            </span>
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-gradient-to-r from-purple-400 to-pink-400 rounded-full mr-2 animate-pulse delay-500"></span>
+              Always Free
+            </span>
           </div>
         </div>
       </div>
