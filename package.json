@@ -19,7 +19,8 @@
     "faiss-node": "^0.5.1",
     "next": "canary",
     "react": "^19.0.0-rc.0",
-    "react-dom": "^19.0.0-rc.0"
+    "react-dom": "^19.0.0-rc.0",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

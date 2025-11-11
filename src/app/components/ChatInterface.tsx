@@ -258,12 +258,12 @@ export default function ChatInterface() {
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString(locale, {
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
-    });
-  };
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: true 
+  });
+};
 
   const changeLanguage = (lang: Language) => {
     setLanguage(lang);
