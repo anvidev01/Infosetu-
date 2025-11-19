@@ -1,271 +1,324 @@
+// src/app/api/chat/route.ts
 import { NextResponse } from 'next/server';
+import { FaissStore } from "@langchain/community/vectorstores/faiss";
+import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/huggingface_transformers";
+import { isTransactionalQuery, getSafetyResponse } from '@/lib/safety-check';
 
-// MyScheme.gov.in Integration
-const MYSCHEME_CONFIG = {
-  baseUrl: 'https://www.myscheme.gov.in',
-  searchUrl: 'https://www.myscheme.gov.in/schemes',
-  apiBase: 'https://www.myscheme.gov.in/api'
-};
+// Initialize embeddings (local)
+const embeddings = new HuggingFaceTransformersEmbeddings({
+  model: "Xenova/all-MiniLM-L6-v2",
+});
 
-// Government Schemes mapped to MyScheme
-const GOVERNMENT_SCHEMES = {
-  'pm-awas-yojana': {
-    name: "Pradhan Mantri Awas Yojana (PMAY)",
-    myschemeId: "pmay-urban", // MyScheme identifier
-    searchTerms: ["housing", "awas", "pmay", "pradhan mantri awas yojana"],
-    fallback: {
-      content: "PMAY provides affordable housing with interest subsidy of 6.5% on loans. Features: Credit Linked Subsidy Scheme (CLSS), subsidy up to ₹2.67 lakh for EWS/LIG categories. Eligibility: Family income up to ₹18 lakh annually.",
-      source: "https://www.myscheme.gov.in/scheme/pmay-urban"
-    }
-  },
-  
-  'pm-kisan': {
-    name: "PM-KISAN Scheme",
-    myschemeId: "pm-kisan",
-    searchTerms: ["pm-kisan", "kisan", "farmer", "agriculture"],
-    fallback: {
-      content: "Provides ₹6,000 per year in 3 equal installments to farmer families with landholding up to 2 hectares. Documents: Land records, Aadhaar, bank account details.",
-      source: "https://www.myscheme.gov.in/scheme/pm-kisan"
-    }
-  },
-  
-  'ayushman-bharat': {
-    name: "Ayushman Bharat PM-JAY",
-    myschemeId: "ayushman-bharat",
-    searchTerms: ["ayushman", "health", "insurance", "medical"],
-    fallback: {
-      content: "Health insurance coverage of ₹5 lakhs per family annually. Coverage: Hospitalization, surgery, pre-existing diseases. Eligibility: Based on SECC 2011 data.",
-      source: "https://www.myscheme.gov.in/scheme/ayushman-bharat"
-    }
-  },
-  
-  'aadhaar': {
-    name: "Aadhaar Services",
-    myschemeId: "aadhaar",
-    searchTerms: ["aadhaar", "uidai", "identity", "enrollment"],
-    fallback: {
-      content: "Aadhaar enrollment and update services. Required documents: Proof of identity, address, date of birth. Update process: Online through uidai.gov.in.",
-      source: "https://www.myscheme.gov.in/scheme/aadhaar"
-    }
-  },
-  
-  'scholarship': {
-    name: "National Scholarship Portal",
-    myschemeId: "national-scholarship",
-    searchTerms: ["scholarship", "education", "student", "financial aid"],
-    fallback: {
-      content: "Pre-Matric, Post-Matric, Merit-cum-Means scholarships. Platforms: National Scholarship Portal, Vidyalakshmi for education loans.",
-      source: "https://www.myscheme.gov.in/scheme/national-scholarship"
-    }
-  },
-  
-  'employment': {
-    name: "Employment Programs",
-    myschemeId: "employment",
-    searchTerms: ["employment", "job", "mnrega", "skill india"],
-    fallback: {
-      content: "MNREGA: 100 days guaranteed employment. National Career Service: Job portal and counseling. Skill India: Vocational training.",
-      source: "https://www.myscheme.gov.in/scheme/employment"
-    }
-  }
-};
-
-// Function to fetch from MyScheme.gov.in
-async function fetchFromMyScheme(schemeKey: string, query: string) {
-  const scheme = GOVERNMENT_SCHEMES[schemeKey as keyof typeof GOVERNMENT_SCHEMES];
-  
-  if (!scheme) {
-    return { ...scheme.fallback, live: false };
-  }
-
+// PAYG AI Provider - Replicate (Mistral-7B)
+async function getAIResponse(userQuery: string, context: string) {
   try {
-    console.log(`Fetching from MyScheme for: ${scheme.name}`);
-    
-    // Method 1: Try direct MyScheme API (if available)
-    const apiUrl = `${MYSCHEME_CONFIG.apiBase}/schemes/${scheme.myschemeId}`;
-    
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'InfoSetu-Citizen-Service/1.0 (+https://github.com/infosetu)',
-        'Accept': 'application/json',
-        'Referer': 'https://www.myscheme.gov.in'
-      },
-      signal: AbortSignal.timeout(10000) // 10 second timeout
+    // Check if Replicate API key is available and valid
+    if (!process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_TOKEN === 'your_replicate_key_here') {
+      throw new Error('No valid API key configured');
+    }
+
+    const replicate = (await import("replicate")).default;
+    const replicateClient = new replicate({
+      auth: process.env.REPLICATE_API_TOKEN,
     });
 
-    // If API works, process the data
-    if (response.ok) {
-      const data = await response.json();
-      console.log('MyScheme API Response:', data);
-      
-      return {
-        content: processMySchemeData(data, scheme),
-        source: `${MYSCHEME_CONFIG.baseUrl}/schemes/${scheme.myschemeId}`,
-        live: true,
-        apiSource: 'MyScheme Official API'
-      };
-    }
-
-    // Method 2: If API fails, use MyScheme webpage structure
-    const webUrl = `${MYSCHEME_CONFIG.baseUrl}/schemes/${scheme.myschemeId}`;
-    const webResponse = await fetch(webUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      },
-      signal: AbortSignal.timeout(8000)
-    });
-
-    if (webResponse.ok) {
-      const html = await webResponse.text();
-      // Extract key information from HTML (simplified)
-      const extractedInfo = extractInfoFromHTML(html, scheme);
-      
-      return {
-        content: extractedInfo || scheme.fallback.content,
-        source: webUrl,
-        live: true,
-        apiSource: 'MyScheme Web Portal'
-      };
-    }
-
-  } catch (error) {
-    console.log(`MyScheme fetch failed for ${schemeKey}:`, error);
-  }
-
-  // Fallback to our verified data
-  return { ...scheme.fallback, live: false, apiSource: 'Verified Database' };
-}
-
-// Process MyScheme API response
-function processMySchemeData(data: any, scheme: any) {
-  let content = scheme.fallback.content;
-  
-  if (data && data.scheme) {
-    const schemeData = data.scheme;
+    console.log('🤖 Using PAYG AI (Replicate)...');
     
-    // Build enhanced content from API data
-    content = `🏛️ ${schemeData.name || scheme.name}\n\n`;
-    
-    if (schemeData.description) {
-      content += `${schemeData.description}\n\n`;
-    }
-    
-    if (schemeData.benefits) {
-      content += `✅ Benefits: ${schemeData.benefits}\n\n`;
-    }
-    
-    if (schemeData.eligibility) {
-      content += `📋 Eligibility: ${schemeData.eligibility}\n\n`;
-    }
-    
-    content += `🔗 Source: MyScheme.gov.in`;
-  }
-  
-  return content;
-}
+    const response = await replicateClient.run(
+      "mistralai/mistral-7b-instruct-v0.2",
+      {
+        input: {
+          prompt: `You are InfoSetu, an AI assistant for Indian government services. Provide accurate, helpful information based ONLY on the verified context below.
 
-// Extract information from MyScheme HTML (basic implementation)
-function extractInfoFromHTML(html: string, scheme: any) {
-  // This is a simplified version - in production, use proper HTML parsing
-  const hasSchemeInfo = html.toLowerCase().includes(scheme.name.toLowerCase());
-  
-  if (hasSchemeInfo) {
-    return `${scheme.fallback.content}\n\n🌐 Live data fetched from MyScheme.gov.in`;
-  }
-  
-  return scheme.fallback.content;
-}
+VERIFIED CONTEXT FROM OFFICIAL SOURCES:
+${context}
 
-// Smart scheme detection for MyScheme
-function detectMyScheme(query: string): string {
-  const lowerQuery = query.toLowerCase();
-  let bestMatch = '';
-  let highestScore = 0;
+USER QUESTION: ${userQuery}
 
-  for (const [schemeKey, scheme] of Object.entries(GOVERNMENT_SCHEMES)) {
-    let score = 0;
+IMPORTANT RULES:
+1. Answer ONLY using information from the verified context above
+2. If context doesn't have the answer, say "I don't have verified information about this yet"
+3. Never make up or hallucinate information
+4. Provide clear, structured response with emojis
+5. Include eligibility, documents, process, and benefits where available
+6. Mention official websites and helplines
 
-    // Check search terms
-    scheme.searchTerms.forEach(term => {
-      if (lowerQuery.includes(term)) {
-        score += 3;
+Response:`,
+            max_new_tokens: 800,
+            temperature: 0.1, // Low temperature for accuracy
+            top_p: 0.9,
+        }
       }
-    });
-
-    // Exact name match
-    if (lowerQuery.includes(scheme.name.toLowerCase())) {
-      score += 10;
-    }
-
-    // Contextual boosts
-    if (schemeKey === 'pm-awas-yojana' && 
-        (lowerQuery.includes('house') || lowerQuery.includes('home'))) {
-      score += 5;
-    }
-
-    if (score > highestScore) {
-      highestScore = score;
-      bestMatch = schemeKey;
-    }
+    );
+    
+    return {
+      response: response,
+      aiUsed: true,
+      provider: "Replicate (Mistral-7B)",
+      cost: "~₹0.045 per query"
+    };
+    
+  } catch (error) {
+    console.log('PAYG AI failed, using local enhanced responses:', error);
+    return {
+      response: null,
+      aiUsed: false,
+      provider: "Local Enhanced Responses",
+      cost: "₹0.00"
+    };
   }
-
-  return highestScore > 2 ? bestMatch : 'general';
 }
 
-// Get all available schemes for general response
-function getAvailableSchemes() {
-  return Object.values(GOVERNMENT_SCHEMES)
-    .map(scheme => `• ${scheme.name}`)
-    .join('\n');
-}
+// Enhanced local responses fallback
+const ENHANCED_RESPONSES = {
+  'pm-kisan': `👨‍🌾 **PM-KISAN Scheme** 
+
+💰 **Financial Benefits:**
+• ₹6,000 per year to eligible farmer families
+• Paid in 3 equal installments of ₹2,000
+• Direct bank transfer - no middlemen
+
+📋 **Eligibility Criteria:**
+• Small and marginal farmer families
+• Combined landholding up to 2 hectares
+• Valid land records required
+• Bank account mandatory
+
+📄 **Required Documents:**
+• Land records and ownership proof
+• Aadhaar card of all family members  
+• Bank account details
+• Identity proof (Voter ID, PAN, etc.)
+
+📍 **Application Process:**
+1. Visit Common Service Centers (CSCs)
+2. Use PM-KISAN mobile application
+3. Contact local agriculture office
+4. Online through PM-KISAN portal
+
+⏰ **Payment Schedule:**
+• 1st Installment: April - July
+• 2nd Installment: August - November  
+• 3rd Installment: December - March
+
+📞 **Helpline:** 155261 / 1800115526
+🔗 **Official Website:** https://pmkisan.gov.in
+
+💡 **Source:** Verified data from pmkisan.gov.in`,
+
+  'aadhaar': `🆔 **Aadhaar Services**
+
+🔧 **Services Available:**
+• New enrollment and registration
+• Document updates and corrections  
+• Biometric updates (fingerprints, iris)
+• e-Aadhaar download and printing
+• Aadhaar linking with bank, mobile, etc.
+
+📋 **Required Documents:**
+
+**Proof of Identity (Any one):**
+• Passport • PAN Card • Driving License
+• Government ID • Pension document
+
+**Proof of Address (Any one):**
+• Bank Statement • Utility bill (electricity, water)
+• Property tax receipt • Rental agreement
+
+**Date of Birth Proof:**
+• Birth certificate • School certificate
+• PAN card • Passport
+
+📍 **Application Process:**
+1. Locate nearest Aadhaar enrollment center
+2. Book appointment online at uidai.gov.in
+3. Walk-in with required documents
+4. Complete biometric registration
+5. Receive acknowledgment slip
+
+⏰ **Processing Time:**
+• New enrollment: 90 days for Aadhaar delivery
+• Update requests: 30 days for updated Aadhaar
+• e-Aadhaar: Instant download available
+
+📞 **Helpline:** 1947
+🔗 **Official Portal:** https://uidai.gov.in
+
+💡 **Source:** Verified data from uidai.gov.in`,
+
+  'pension': `👵 **Government Pension Schemes**
+
+🏛️ **Major Pension Schemes:**
+
+**1. National Social Assistance Programme (NSAP)**
+• Indira Gandhi National Old Age Pension Scheme (IGNOAPS)
+• Indira Gandhi National Widow Pension Scheme (IGNWPS) 
+• Indira Gandhi National Disability Pension Scheme (IGNDPS)
+
+**2. Atal Pension Yojana (APY)**
+• For unorganized sector workers
+• Guaranteed pension after 60 years
+• Fixed pension from ₹1000 to ₹5000 per month
+
+**3. Employees' Pension Scheme (EPS)**
+• For organized sector employees
+• Employer-employee contribution based
+• Pension based on salary and service period
+
+💰 **Eligibility Criteria:**
+• Age 60+ years for most schemes
+• Below Poverty Line (BPL) status
+• Specific age and income criteria per scheme
+• Disability certificate for disability pension
+
+📄 **Required Documents:**
+• Age proof certificate
+• Income certificate
+• Bank account details
+• Identity proof (Aadhaar, Voter ID)
+• Recent passport photographs
+• BPL card (if applicable)
+
+📍 **Application Process:**
+1. Visit local social welfare office
+2. Apply through Common Service Centers
+3. Online application for some schemes
+4. Submit required documents with application
+
+💵 **Benefit Amount:**
+• Varies by scheme from ₹300 to ₹5000 monthly
+• Direct bank transfer
+• Regular monthly payments
+
+📞 **Helpline:** 1800115525
+🔗 **Official Portal:** https://nsap.nic.in
+
+💡 **Source:** Verified data from nsap.nic.in`
+};
 
 export async function POST(request: Request) {
+  const startTime = Date.now();
+  
   try {
     const { message } = await request.json();
-    console.log('Processing query:', message);
-    
-    const detectedScheme = detectMyScheme(message);
-    console.log('Detected scheme:', detectedScheme);
+    console.log('🤖 Processing query:', message);
 
-    if (detectedScheme === 'general') {
-      return NextResponse.json({ 
-        response: `I can help you with these government schemes from MyScheme.gov.in:\n\n${getAvailableSchemes()}\n\nPlease ask about any specific scheme for detailed information!`,
-        source: "MyScheme.gov.in - National Government Schemes Portal"
+    // Phase B: Safety Check - Block transactional queries
+    if (isTransactionalQuery(message)) {
+      console.log('🔒 Blocked transactional query');
+      return NextResponse.json({
+        response: getSafetyResponse(message),
+        source: "Security System",
+        usage: {
+          processingTime: Date.now() - startTime,
+          safetyCheck: "blocked"
+        }
       });
     }
 
-    // Fetch data from MyScheme
-    const schemeData = await fetchFromMyScheme(detectedScheme, message);
-    const schemeInfo = GOVERNMENT_SCHEMES[detectedScheme as keyof typeof GOVERNMENT_SCHEMES];
-    
-    let responseText = `🏛️ ${schemeInfo.name}\n\n${schemeData.content}`;
-    
-    // Add API status
-    if (schemeData.live) {
-      responseText += `\n\n✅ Connected to: ${schemeData.apiSource}`;
-    } else {
-      responseText += `\n\n📚 Using verified information from MyScheme database`;
+    // Phase B: Retrieval - Try vector database first
+    let relevantDocs = [];
+    try {
+      const vectorStore = await FaissStore.load("./vector_store", embeddings);
+      relevantDocs = await vectorStore.similaritySearch(message, 3);
+      console.log('🔍 Found relevant documents:', relevantDocs.length);
+      
+    } catch (dbError) {
+      console.log('Vector database unavailable, using fallback data');
+      // Fallback to basic keyword matching
+      relevantDocs = getFallbackDocs(message);
     }
-    
-    responseText += `\n\n🔗 Official MyScheme Page: ${schemeData.source}`;
-    responseText += `\n\n🌐 Explore more: https://www.myscheme.gov.in`;
 
-    return NextResponse.json({ 
-      response: responseText,
-      source: schemeData.source,
-      scheme: schemeInfo.name,
-      live: schemeData.live,
-      apiSource: schemeData.apiSource
+    if (relevantDocs.length === 0) {
+      return NextResponse.json({
+        response: `🇮🇳 **Welcome to InfoSetu!** 
+
+I can help you with verified information about:
+
+• 👨‍🌾 PM-KISAN Scheme - Farmer financial assistance
+• 🆔 Aadhaar Services - Identity verification  
+• 👵 Pension Schemes - Social security for elderly
+
+Please ask about any specific scheme for detailed information! 💡`,
+        source: "InfoSetu AI Assistant",
+        usage: { 
+          documents: 0, 
+          processingTime: Date.now() - startTime,
+          aiProvider: "Local Knowledge Base"
+        }
+      });
+    }
+
+    // Phase B: Augmentation & Generation
+    const bestMatch = relevantDocs[0];
+    const schemeId = bestMatch.metadata?.id || 'general';
+
+    // Build context from relevant documents
+    const context = relevantDocs.map(doc => doc.pageContent).join('\n\n');
+    
+    // PAYG AI Call (will fallback to local if no API key)
+    const aiResult = await getAIResponse(message, context);
+
+    let finalResponse: string;
+    
+    if (aiResult.response && aiResult.aiUsed) {
+      // Use PAYG AI response
+      finalResponse = `${aiResult.response}\n\n---\n*🤖 Powered by ${aiResult.provider} | Cost: ${aiResult.cost}*`;
+    } else {
+      // Use enhanced local response
+      finalResponse = ENHANCED_RESPONSES[schemeId as keyof typeof ENHANCED_RESPONSES] || 
+                     `🏛️ **Government Service Information**\n\n${bestMatch.pageContent}\n\n💡 *Powered by InfoSetu Local AI*`;
+    }
+
+    return NextResponse.json({
+      response: finalResponse,
+      source: "Verified Government Sources",
+      confidence: relevantDocs.length > 1 ? "high" : "medium",
+      usage: {
+        documents: relevantDocs.length,
+        processingTime: Date.now() - startTime,
+        aiProvider: aiResult.provider,
+        cost: aiResult.cost,
+        safetyChecked: true
+      }
     });
 
   } catch (error) {
-    console.error("MyScheme API Error:", error);
+    console.error("Chat API Error:", error);
     
-    return NextResponse.json({ 
-      response: `I specialize in government schemes from MyScheme.gov.in including housing (PM Awas Yojana), farmer support (PM-KISAN), health insurance (Ayushman Bharat), scholarships, and employment programs. Ask me about any government service!`,
-      source: "MyScheme.gov.in - National Government Schemes Portal"
+    return NextResponse.json({
+      response: `🇮🇳 **Welcome to InfoSetu!** 
+
+I specialize in verified Indian government services information:
+
+• 👨‍🌾 PM-KISAN - Farmer financial support
+• 🆔 Aadhaar - Identity services  
+• 👵 Pension - Social security schemes
+
+Please ask me about any specific government service! 🚀`,
+      source: "InfoSetu Government Services",
+      usage: {
+        processingTime: Date.now() - startTime,
+        aiProvider: "Fallback System",
+        cost: "₹0.00"
+      }
     });
   }
+}
+
+// Fallback when vector database is unavailable
+function getFallbackDocs(query: string): any[] {
+  const lowerQuery = query.toLowerCase();
+  
+  if (lowerQuery.includes('pmkisan') || lowerQuery.includes('farmer') || lowerQuery.includes('kisan')) {
+    return [{ pageContent: ENHANCED_RESPONSES['pm-kisan'], metadata: { id: 'pm-kisan' } }];
+  }
+  if (lowerQuery.includes('aadhaar') || lowerQuery.includes('uidai') || lowerQuery.includes('enrollment')) {
+    return [{ pageContent: ENHANCED_RESPONSES['aadhaar'], metadata: { id: 'aadhaar' } }];
+  }
+  if (lowerQuery.includes('pension') || lowerQuery.includes('elderly') || lowerQuery.includes('old age')) {
+    return [{ pageContent: ENHANCED_RESPONSES['pension'], metadata: { id: 'pension' } }];
+  }
+  
+  return [];
 }
