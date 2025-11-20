@@ -223,31 +223,72 @@ export default function ChatInterface() {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       const file = event.target.files[0];
+      
+      // Validate file type
       if (!file.type.startsWith('image/')) {
-        alert("Please upload an image file (PNG, JPG, etc.).");
+        alert("Please upload an image file (PNG, JPG, JPEG, etc.).");
         return;
       }
+
       setIsLoading(true);
       setIsProcessingImage(true);
-      
-      const worker = await createWorker('eng');
-      const ret = await worker.recognize(file);
-      await worker.terminate();
-      const extractedText = ret.data.text;
-      
-      const ocrMessage: Message = {
-        text: `📄 **Document Uploaded Successfully**\n\n"${extractedText.substring(0, 150)}..."\n\nPlease ask your question about this document.`,
-        isUser: false,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, ocrMessage]);
-      
-      setInput(`Based on the document I just uploaded, please tell me...`);
-      setIsLoading(false);
-      setIsProcessingImage(false);
 
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      try {
+        console.log('🔄 Starting OCR processing for:', file.name);
+        
+        // 🆕 SIMPLE AND RELIABLE WORKER SETUP
+        const worker = await createWorker('eng');
+        
+        console.log('📄 Processing image with Tesseract...');
+        
+        const { data: { text } } = await worker.recognize(file);
+        
+        console.log('✅ OCR completed. Text length:', text.length);
+        
+        await worker.terminate();
+
+        const extractedText = text.trim();
+        
+        let ocrMessage: Message;
+        
+        if (extractedText && extractedText.length > 10) {
+          ocrMessage = {
+            text: `📄 **Document Uploaded Successfully!**\n\n**Extracted Text:**\n"${extractedText.substring(0, 200)}${extractedText.length > 200 ? '...' : ''}"\n\nYou can now ask questions about this document!`,
+            isUser: false,
+            timestamp: new Date()
+          };
+          
+          // Auto-suggest a question
+          setInput(`What is this document about?`);
+        } else {
+          ocrMessage = {
+            text: `❌ **No readable text found**\n\nI couldn't extract clear text from this image. Please try:\n• A clearer, higher quality image\n• Image with larger, clearer text\n• Different image format (PNG/JPG)`,
+            isUser: false,
+            timestamp: new Date()
+          };
+        }
+        
+        setMessages(prev => [...prev, ocrMessage]);
+
+      } catch (error: any) {
+        console.error('❌ OCR processing failed:', error);
+        
+        const errorMessage: Message = {
+          text: `❌ **Document Processing Failed**\n\nError: ${error.message || 'Unknown error occurred'}\n\nPlease try a different image or check the console for details.`,
+          isUser: false,
+          timestamp: new Date()
+        };
+        
+        setMessages(prev => [...prev, errorMessage]);
+        
+      } finally {
+        setIsLoading(false);
+        setIsProcessingImage(false);
+
+        // Reset file input
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       }
     }
   };
@@ -571,21 +612,29 @@ export default function ChatInterface() {
                 )}
               </div>
               
-              {/* File Upload Button */}
+              {/* 🆕 UPDATED File Upload Button */}
               <input 
                 type="file" 
                 ref={fileInputRef} 
                 onChange={handleFileChange} 
                 className="hidden" 
-                accept="image/*" 
+                accept=".png,.jpg,.jpeg,.gif,.webp" 
               />
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isLoading || isProcessingImage}
-                className="bg-gradient-to-r from-emerald-500 to-green-500 text-white px-5 py-4 rounded-2xl hover:from-emerald-600 hover:to-green-600 hover:scale-105 transition-all duration-300 shadow-lg shadow-emerald-500/25 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center min-w-[60px]"
-                title={txt.uploadDoc}
+                className={`px-5 py-4 rounded-2xl transition-all duration-300 shadow-lg hover:scale-105 flex items-center justify-center min-w-[60px] ${
+                  isProcessingImage 
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse shadow-purple-500/25' 
+                    : 'bg-gradient-to-r from-emerald-500 to-green-500 text-white hover:from-emerald-600 hover:to-green-600 shadow-emerald-500/25'
+                } disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed disabled:transform-none`}
+                title={isProcessingImage ? "Processing document..." : txt.uploadDoc}
               >
-                <span className="text-lg">📄</span>
+                {isProcessingImage ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <span className="text-lg">📄</span>
+                )}
               </button>
               
               {/* Voice Input Button */}
