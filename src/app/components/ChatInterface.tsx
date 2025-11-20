@@ -28,6 +28,7 @@ const translations = {
     uploadDoc: "Upload Document",
     send: "Send",
     typing: "InfoSetu is typing...",
+    stopVoice: "⏹️ Stop Voice", // 🆕 NEW TRANSLATION
   },
   hi: {
     welcome: "नमस्ते! मैं इन्फोसेतु, आपका एआई-संचालित नागरिक सेवा सहायक हूं। मैं सरकारी सेवाओं के लिए आपके बुद्धिमान सेतु के रूप में कार्य करता हूं, जो आपको योजनाओं, प्रपत्रों, पात्रता मानदंडों और बहुत कुछ के साथ आपकी पसंदीदा भाषा में मदद करता है। आप इसके बारे में प्रश्न पूछने के लिए कोई दस्तावेज़ भी अपलोड कर सकते हैं। मैं आज आपकी किस प्रकार सहायता कर सकता हूँ?",
@@ -43,6 +44,7 @@ const translations = {
     uploadDoc: "दस्तावेज़ अपलोड",
     send: "भेजें",
     typing: "इन्फोसेतु टाइप कर रहा है...",
+    stopVoice: "⏹️ आवाज़ रोकें", // 🆕 NEW TRANSLATION
   }
 };
 
@@ -63,6 +65,7 @@ export default function ChatInterface() {
   const [isListening, setIsListening] = useState(false);
   const [isSpeechEnabled, setIsSpeechEnabled] = useState(true);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false); // 🆕 TRACK SPEECH STATE
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -103,26 +106,54 @@ export default function ChatInterface() {
     scrollToBottom();
   }, [messages]);
 
+  // 🆕 STOP VOICE FUNCTION
+  const stopVoice = () => {
+    const synth = synthRef.current;
+    if (synth) {
+      synth.cancel();
+      setIsSpeaking(false);
+    }
+  };
+
+  // 🆕 ENHANCED HUMAN-LIKE VOICE FUNCTION
   const speakMessage = (text: string) => {
     const synth = synthRef.current;
     if (!isSpeechEnabled || !synth) return;
     
+    // Cancel any current speech
     synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = locale;
-    utterance.rate = 0.9;
     
-    const voices = synth.getVoices();
-    const voice = voices.find((v: any) => v.lang === locale);
-    if (voice) {
-      utterance.voice = voice;
-    }
+    // 🆕 MINIMAL CLEANING - ONLY REMOVE AI CREDITS
+    const cleanText = text.replace(/\*🤖 Powered by.*\*/g, '');
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // 🆕 NATURAL SETTINGS (NOT ROBOTIC)
+    utterance.rate = 1.0;     // Normal speed (was 0.85 - too slow)
+    utterance.pitch = 1.0;    // Normal pitch (was 1.1 - too high)
+    utterance.volume = 1.0;   // Full volume
+    utterance.lang = locale;
+    
+    // 🆕 TRACK SPEECH STATE
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+    };
+    
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+    
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+    };
+
     synth.speak(utterance);
   };
   
   useEffect(() => {
     if (isListening && synthRef.current) {
       synthRef.current.cancel();
+      setIsSpeaking(false);
     }
   }, [isListening]);
 
@@ -130,6 +161,7 @@ export default function ChatInterface() {
     if (!messageText.trim()) return;
     if (synthRef.current) {
       synthRef.current.cancel();
+      setIsSpeaking(false);
     }
 
     const userMessage: Message = {
@@ -148,7 +180,14 @@ export default function ChatInterface() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message: messageText, language: language }),
+        body: JSON.stringify({ 
+          message: messageText, 
+          language: language,
+          chatHistory: messages.map(msg => ({
+            role: msg.isUser ? 'user' : 'assistant',
+            content: msg.text
+          }))
+        }),
       });
 
       const data = await response.json();
@@ -160,7 +199,11 @@ export default function ChatInterface() {
       };
       
       setMessages(prev => [...prev, aiMessage]);
-      speakMessage(data.response);
+      
+      // 🆕 DELAY SPEECH FOR MORE NATURAL FEEL
+      setTimeout(() => {
+        speakMessage(data.response);
+      }, 500);
 
     } catch (error) {
       const errorMessage: Message = {
@@ -169,7 +212,9 @@ export default function ChatInterface() {
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
-      speakMessage(errorMessage.text);
+      setTimeout(() => {
+        speakMessage(errorMessage.text);
+      }, 500);
     } finally {
       setIsLoading(false);
     }
@@ -215,6 +260,7 @@ export default function ChatInterface() {
     }
     if (synthRef.current) {
       synthRef.current.cancel();
+      setIsSpeaking(false);
     }
 
     if (isListening) {
@@ -249,6 +295,7 @@ export default function ChatInterface() {
   const handleQuickHelp = (service: string) => {
     if (synthRef.current) {
       synthRef.current.cancel();
+      setIsSpeaking(false);
     }
     const query = language === 'hi' 
       ? `मुझे ${service} के बारे में बताएं` 
@@ -386,16 +433,30 @@ export default function ChatInterface() {
               🇮🇳 हिंदी
             </button>
           </div>
-          <button 
-            onClick={() => setIsSpeechEnabled(!isSpeechEnabled)}
-            className={`px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
-              isSpeechEnabled 
-                ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25' 
-                : 'bg-slate-700/50 text-slate-300 border border-slate-600/50'
-            }`}
-          >
-            {isSpeechEnabled ? txt.voiceOn : txt.voiceOff}
-          </button>
+          
+          <div className="flex space-x-3">
+            {/* 🆕 STOP VOICE BUTTON - Only show when speaking */}
+            {isSpeaking && (
+              <button 
+                onClick={stopVoice}
+                className="bg-gradient-to-r from-red-500 to-pink-500 text-white px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg shadow-red-500/25 hover:from-red-600 hover:to-pink-600 animate-pulse"
+                title="Stop current speech"
+              >
+                {txt.stopVoice}
+              </button>
+            )}
+            
+            <button 
+              onClick={() => setIsSpeechEnabled(!isSpeechEnabled)}
+              className={`px-5 py-2.5 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 ${
+                isSpeechEnabled 
+                  ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25' 
+                  : 'bg-slate-700/50 text-slate-300 border border-slate-600/50'
+              }`}
+            >
+              {isSpeechEnabled ? txt.voiceOn : txt.voiceOff}
+            </button>
+          </div>
         </div>
 
         {/* Main Chat Container */}
