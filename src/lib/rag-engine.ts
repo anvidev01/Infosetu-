@@ -1,7 +1,7 @@
-
 import { FaissStore } from "@langchain/community/vectorstores/faiss";
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/huggingface_transformers";
 import { ChatOllama } from "@langchain/ollama";
+import { ChatGroq } from "@langchain/groq";
 import { tavily } from "@tavily/core";
 import path from "path";
 
@@ -30,14 +30,15 @@ const PROMPTS: Record<Language, string> = {
 export class RAGEngine {
     private vectorStorePath: string;
     private embeddings: HuggingFaceTransformersEmbeddings;
-    private llm: ChatOllama;
+    private llm: ChatOllama | ChatGroq;
     private tavilyClient: any; // Using any for now as @tavily/core types might vary
     private isInitialized: boolean = false;
     private vectorStore: FaissStore | null = null;
 
     // Configuration
     private SIMILARITY_THRESHOLD = 0.7; // As per requirements
-    private LLM_MODEL = "llama3.2:3b";
+    private LLM_MODEL = "llama3-8b-8192"; // Groq Llama 3 Model
+    private OLLAMA_MODEL = "llama3.2:3b";
     private TAVILY_DOMAINS = [".gov.in", ".nic.in"];
 
     constructor() {
@@ -48,12 +49,23 @@ export class RAGEngine {
             model: "Xenova/all-MiniLM-L6-v2",
         });
 
-        // Initialize Ollama
-        this.llm = new ChatOllama({
-            baseUrl: "http://localhost:11434", // Default Ollama URL
-            model: this.LLM_MODEL,
-            temperature: 0.1, // Lower temperature for more deterministic translations
-        });
+        // Initialize LLM (Groq Preferred for Vercel, Ollama fallback)
+        const groqApiKey = process.env.GROQ_API_KEY;
+        if (groqApiKey) {
+            console.log("Using Groq Cloud LLM");
+            this.llm = new ChatGroq({
+                apiKey: groqApiKey,
+                model: this.LLM_MODEL,
+                temperature: 0.1
+            });
+        } else {
+            console.log("Using Local Ollama (Fallback)");
+            this.llm = new ChatOllama({
+                baseUrl: "http://localhost:11434", // Default Ollama URL
+                model: this.OLLAMA_MODEL,
+                temperature: 0.1, // Lower temperature for more deterministic translations
+            });
+        }
 
         // Initialize Tavily
         const apiKey = process.env.TAVILY_API_KEY;
