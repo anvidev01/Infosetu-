@@ -37,7 +37,7 @@ export class RAGEngine {
 
     // Configuration
     private SIMILARITY_THRESHOLD = 0.7; // As per requirements
-    private LLM_MODEL = "llama3-8b-8192"; // Groq Llama 3 Model
+    private LLM_MODEL = "llama-3.3-70b-versatile"; // Latest Groq Model (Replacing decommissioned llama3-8b)
     private OLLAMA_MODEL = "llama3.2:3b";
     private TAVILY_DOMAINS = [".gov.in", ".nic.in"];
 
