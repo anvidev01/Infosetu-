@@ -1,4 +1,4 @@
-import { FaissStore } from "@langchain/community/vectorstores/faiss";
+
 import { HuggingFaceTransformersEmbeddings } from "@langchain/community/embeddings/huggingface_transformers";
 import { ChatOllama } from "@langchain/ollama";
 import { ChatGroq } from "@langchain/groq";
@@ -33,7 +33,7 @@ export class RAGEngine {
     private llm: ChatOllama | ChatGroq;
     private tavilyClient: any; // Using any for now as @tavily/core types might vary
     private isInitialized: boolean = false;
-    private vectorStore: FaissStore | null = null;
+    private vectorStore: any = null; // Type as any since we load dynamically
 
     // Configuration
     private SIMILARITY_THRESHOLD = 0.7; // As per requirements
@@ -82,19 +82,24 @@ export class RAGEngine {
 
         try {
             console.log(`Loading vector store from: ${this.vectorStorePath}`);
+            // Dynamic import to prevent startup crash if binary is missing/incompatible
+            const { FaissStore } = await import("@langchain/community/vectorstores/faiss");
+
             this.vectorStore = await FaissStore.load(
                 this.vectorStorePath,
                 this.embeddings
             );
             this.isInitialized = true;
         } catch (error) {
-            console.error("Failed to load vector store:", error);
+            console.error("⚠️ Failed to load vector store (Running in Fallback Mode):", error);
             // We might proceed without vector store if it fails, relying on Tavily/LLM
             this.vectorStore = null;
+            this.isInitialized = true; // Mark as initialized so we don't retry forever
         }
     }
 
     public async query(userMessage: string, language: Language = 'en'): Promise<RAGResponse> {
+        // Attempt to load VS, but don't block
         await this.initializeVectorStore();
 
         let context = "";
@@ -174,8 +179,9 @@ ${userMessage}
             };
         } catch (err) {
             console.error("LLM generation error:", err);
+            // IMPORTANT: Don't crash, return a user-friendly error
             return {
-                answer: "System Error. Please try again later.",
+                answer: `Error: Unable to generate response. (${err instanceof Error ? err.message : 'Unknown Error'})`,
                 source: "llm_direct",
                 citations: []
             };
